@@ -13,15 +13,12 @@
         POSICION
         ESTADO
         PISO
-        BOTON
+	BOTONES_ANT
     ENDC
 
 ;==================== VECTORES DE INICIO ========================================
 	ORG 0x00
 	    GOTO CONFI
-
-    ORG 0x04
-        GOTO ISR
 
 	ORG 0x05
 
@@ -48,18 +45,12 @@ CONFI
     
     BANKSEL TMR0
     CLRF TMR0
-    
-    MOVLW B'00000111' 
-    MOVWF IOCB          ; Habilitar interrupciones por cambio en RB0, RB1 y RB2 
-
-    MOVLW B'10001000'   ; Habilitar interrupciones globales y de PORTB
-    MOVWF INTCON
 
     CLRF PORTB          ; Inicializar PORTB
+    CLRF PORTC          ; Inicializar PORTC
 
     CLRF ESTADO         ; Inicializar el estado del ascensor
     CLRF PISO           ; Inicializar el piso actual
-    CLRF BOTON          ; Inicializar el botón
 
     CALL DETENER_MOTOR  ; Asegurar que el motor esté detenido al inicio
 
@@ -69,6 +60,7 @@ MAIN
 ; REVISAR CON MELI
     CALL DISPLAY
     CALL VERIFICAR_ESTADO   ; Verifico donde esta el ascensor
+    CALL VERIFICAR_BOTONES
     MOVF ESTADO, W
     XORWF PISO, W
     BTFSS STATUS, Z
@@ -121,53 +113,67 @@ LOOP_RETARDO
     GOTO LOOP_RETARDO       ; Si no se desbordó, espera
     RETURN
 
-ISR
-    MOVWF W_AUX         ; Copio W a un registro TEMP
-    SWAPF  STATUS, W    ; Swap status para salvarlo en W
-                        ; ya que esta intruccion no afecta las banderas de estado
-    MOVWF STATUS_AUX    ; Salvamos status en el registro STATUS_TEMP
-
-    BTFSC INTCON, RBIF
-    CALL ISR_RBIF
-    BCF INTCON , RBIF   ; limpio bandera de interrupcion por RB
-    GOTO FIN_ISR
-FIN_ISR
-    SWAPF STATUS_AUX ,W  ; Swap registro STATUS_TEMP register a W
-    MOVWF STATUS         ; Guardo el estado
-    SWAPF W_AUX ,F       ; Swap W_TEMP
-    SWAPF W_AUX ,W       ; Swap W_TEMP a W
-    RETFIE
-
-;=================== RUTINA RBIF - INTERRUPCION POR PUERTO B ====================
-ISR_RBIF
-    ; Limpiar bandera de interrupción por cambio
-    MOVFW PORTB 
-    MOVWF BOTON 
-    MOVLW B'00000001' 
-    MOVWF PISO       ; Inicializo PISO en 1
-    BTFSC BOTON, 0   ; Testeo el boton del piso 1
-    RETURN           ; si está apretado, vuelvo al main
-    MOVLW B'00000010'
-    MOVWF PISO     ; si no, continuo al siguiente piso
-    BTFSC BOTON, 1   ; Testeo el boton del piso 2
-    RETURN		
-    MOVLW B'00000011'
-    MOVWF PISO	     ; si no, continuo al siguiente piso
-    BTFSC BOTON, 2   ; Testeo el boton del piso 3	
+;=================== VERIFICACION DE BOTONES ====================
+VERIFICAR_BOTONES
+    BTFSC PORTB, 0
+        GOTO RB0_ALTO
+	BCF BOTONES_ANT, 0
+	
+    BTFSC PORTB, 1
+	GOTO RB1_ALTO
+	BCF BOTONES_ANT, 1
+PISO_3
+    BTFSC PORTB, 2
+        GOTO RB2_ALTO
+	BCF BOTONES_ANT, 2
+VOLVER_MAIN
     RETURN
+
+RB0_ALTO
+    BTFSS BOTONES_ANT, 0 
+    GOTO RB0_FLANCO	; no estaba presionado -> no hubo cambio
+    GOTO VOLVER_MAIN	; estaba presionado  
+
+RB0_FLANCO
+    BSF	BOTONES_ANT, 0
+    MOVLW .1
+    MOVWF PISO
+    GOTO VOLVER_MAIN
+    
+RB1_ALTO
+    BTFSS BOTONES_ANT, 1
+    GOTO RB1_FLANCO
+    GOTO PISO_3
+
+RB1_FLANCO
+    BSF	BOTONES_ANT, 1 
+    MOVLW .2
+    MOVWF PISO
+    GOTO VOLVER_MAIN
+
+RB2_ALTO
+    BTFSS BOTONES_ANT, 2
+    GOTO RB2_FLANCO
+    GOTO VOLVER_MAIN
+
+RB2_FLANCO
+    BSF	BOTONES_ANT, 2 
+    MOVLW .3
+    MOVWF PISO
+    GOTO VOLVER_MAIN
 
 ; =================== RUTINA DE VERIFICACION DE ESTADO =========================
 ; Verifica el estado del ascensor y actualiza la variable ESTADO
 VERIFICAR_ESTADO
-    MOVLW B'00000001' 
-    MOVWF ESTADO    ; Inicializo ESTADO en 1     
-    BTFSC PORTA, 1   
-    RETURN           
-    INCF ESTADO	     
-    BTFSC PORTA, 2   
-    RETURN		
-    INCF ESTADO
-    BTFSC PORTA, 3  	
+    BTFSC PORTA, 1
+        MOVLW .1
+        MOVWF ESTADO
+    BTFSC PORTA, 2
+        MOVLW .2
+        MOVWF ESTADO
+    BTFSC PORTA, 3
+        MOVLW .3
+        MOVWF ESTADO
     RETURN
 
 ; =================== RUTINAS DE CONTROL - MOTOR ===============================

@@ -28,7 +28,7 @@ Este proyecto implementa un sistema de control de ascensor de múltiples pisos u
 
 ## ⚙️ Estructura del repositorio
 
-Haugusto/
+´Haugusto/
 ├── src/
 │ ├── ascensor.asm  
 ├── simulacion/
@@ -36,4 +36,4 @@ Haugusto/
 ├── docs/
 │ ├── diagrama.png # Diagrama del circuito (opcional)
 │ └── ejemplo-uart.png # Captura del monitor serial (opcional)
-└── README.md
+└── README.md´
