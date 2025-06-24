@@ -235,14 +235,11 @@ WAIT_ADC
     GOTO    MAYOR_MENOR
 
     ; Si llegamos acá, el valor ADC == 500
-    ; Podes encender un LED por ejemplo
-    BCF     PORTC, 2     ; Encender LED RC0
+    BCF     PORTC, 2     ; Apaga el LED RC0
     GOTO    FIN_COMP
 
 MAYOR_MENOR
-    ; Acá podés hacer otras comparaciones si querés detectar
-    ; si es mayor o menor que 500
-    ; Por ejemplo: si VALH > 1, entonces seguro es > 500
+    ; Si VALH > 1, entonces seguro es > 500
 
     MOVF    VALH, W
     SUBLW   0x01
@@ -250,11 +247,11 @@ MAYOR_MENOR
     GOTO    ADC_MENOR    ; Menor que 500
 
     ; Si es mayor:
-    BCF     PORTC, 2     ; Encender LED
+    BCF     PORTC, 2     ; Apaga el LED
     GOTO    FIN_COMP
 
 ADC_MENOR
-    BSF     PORTC, 2     ; Apagar LED
+    BSF     PORTC, 2     ; Enciende el LED
 
 FIN_COMP
     RETURN
