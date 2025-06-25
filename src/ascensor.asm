@@ -277,12 +277,18 @@ ENVIAR_ESTADO
     MOVF    ESTADO, W       ; Cargar el valor de ESTADO (1 a 3)
     ADDLW   '0'             ; Convertir a carácter ASCII
     CALL    ENVIAR_UART     ; Enviar por UART
+    MOVLW   0x0D       ; Carácter retorno de carro (carriage return)
+    CALL    ENVIAR_UART
+    MOVLW   0x0A       ; Carácter salto de línea (line feed)
+    CALL    ENVIAR_UART
+
     RETURN
 ENVIAR_UART
     BANKSEL TXSTA
 WAIT_TX
     BTFSS   TXSTA, TRMT
     GOTO    WAIT_TX
+    BANKSEL TXREG
     MOVWF   TXREG
     BANKSEL 0
     RETURN
