@@ -50,6 +50,14 @@ CONFI
     BANKSEL ADCON0
     BSF ADCON0, 0      ; Habilitar el ADC
 
+    BANKSEL SPBRG
+    MOVLW D'25'
+    MOVWF SPBRG          ; Configurar baud rate para USART (9600 bps con Fosc = 4MHz)
+    MOVLW B'00100100'    ; Configurar USART: 8 bits, sin paridad, 1 bit de stop
+    MOVWF TXSTA          ; Configurar TXSTA
+    BANKSEL RCSTA
+    BSF RCSTA, 7      ; Habilitar el puerto serial
+
     BANKSEL TMR0        ; Configurar TMR0
     CLRF TMR0           ; Inicializar TMR0 a 0
 
@@ -64,11 +72,11 @@ CONFI
     GOTO MAIN
 
 MAIN
-; REVISAR CON MELI
     CALL DISPLAY
     CALL VERIFICAR_LDR      ; Verifico el LDR
     CALL VERIFICAR_ESTADO   ; Verifico donde esta el ascensor
     CALL VERIFICAR_BOTONES
+    CALL ENVIAR_ESTADO      ; Enviar el estado actual por UART
     MOVF ESTADO, W
     XORWF PISO, W
     BTFSS STATUS, Z
@@ -128,9 +136,9 @@ VERIFICAR_BOTONES
 	BCF BOTONES_ANT, 0
 	
     BTFSC PORTB, 1
-	GOTO RB1_ALTO
+	    GOTO RB1_ALTO
 	BCF BOTONES_ANT, 1
-PISO_3
+
     BTFSC PORTB, 2
         GOTO RB2_ALTO
 	BCF BOTONES_ANT, 2
@@ -151,7 +159,7 @@ RB0_FLANCO
 RB1_ALTO
     BTFSS BOTONES_ANT, 1
     GOTO RB1_FLANCO
-    GOTO PISO_3
+    GOTO VOLVER_MAIN
 
 RB1_FLANCO
     BSF	BOTONES_ANT, 1 
@@ -262,6 +270,21 @@ SAMPLE_TIME
 SD
     DECFSZ TEMP , F ; Bucle de retardo
     GOTO SD
+    RETURN
+
+;=================== RUTINAS DE ENVIO POR EUSART ======================
+ENVIAR_ESTADO
+    MOVF    ESTADO, W       ; Cargar el valor de ESTADO (1 a 3)
+    ADDLW   '0'             ; Convertir a carácter ASCII
+    CALL    ENVIAR_UART     ; Enviar por UART
+    RETURN
+ENVIAR_UART
+    BANKSEL TXSTA
+WAIT_TX
+    BTFSS   TXSTA, TRMT
+    GOTO    WAIT_TX
+    MOVWF   TXREG
+    BANKSEL 0
     RETURN
 END
     
