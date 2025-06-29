@@ -272,12 +272,29 @@ SD
 
 ;=================== RUTINAS DE ENVIO POR EUSART ======================
 ENVIAR_ESTADO
-    MOVF    ESTADO, W       ; Cargar el valor de ESTADO (1 a 3)
-    ADDLW   '0'             ; Convertir a carácter ASCII
-    CALL    ENVIAR_UART     ; Enviar por UART
-    MOVLW   0x0D       ; Carácter retorno de carro (carriage return)
+    ; Enviar texto "PISO: "
+    MOVLW   'P'
     CALL    ENVIAR_UART
-    MOVLW   0x0A       ; Carácter salto de línea (line feed)
+    MOVLW   'I'
+    CALL    ENVIAR_UART
+    MOVLW   'S'
+    CALL    ENVIAR_UART
+    MOVLW   'O'
+    CALL    ENVIAR_UART
+    MOVLW   ':'
+    CALL    ENVIAR_UART
+    MOVLW   ' '
+    CALL    ENVIAR_UART
+
+    ; Enviar valor de ESTADO (1 a 3)
+    MOVF    ESTADO, W
+    ADDLW   '0'
+    CALL    ENVIAR_UART
+
+    ; Enviar retorno de carro y salto de línea
+    MOVLW   0x0D
+    CALL    ENVIAR_UART
+    MOVLW   0x0A
     CALL    ENVIAR_UART
 
     RETURN
