@@ -8,12 +8,13 @@
 
 ;==================== DECLARACIÓN DE VARIABLES ==================================
     CBLOCK 0x20
-        W_AUX
-        STATUS_AUX
         POSICION
         ESTADO
         PISO
-	BOTONES_ANT
+	    BOTONES_ANT
+        TEMP
+        VALH
+        VALL
     ENDC
 
 ;==================== VECTORES DE INICIO ========================================
@@ -25,7 +26,6 @@
 CONFI
     ; Segmentos al puerto D y seleccion de display al puerto E
     ; 3 displays anodo comun (logica negativa)
-    ; Refresco con TMR0 
     BANKSEL TRISD
     CLRF TRISD
     CLRF TRISE
@@ -43,8 +43,21 @@ CONFI
     MOVLW B'10000011'   ; TMR0 source Fosc/4 y prescaler asignado a TMR0 con rate 1:32
     MOVWF OPTION_REG
     
-    BANKSEL TMR0
-    CLRF TMR0
+    BANKSEL ADCON1
+    BSF ADCON1, 7   ; Justificación a la derecha, Vref+ = Vdd, Vref- = Vss
+    BANKSEL ADCON0
+    BSF ADCON0, 0      ; Habilitar el ADC
+
+    BANKSEL SPBRG
+    MOVLW D'25'
+    MOVWF SPBRG          ; Configurar baud rate para USART (9600 bps con Fosc = 4MHz)
+    MOVLW B'00100100'    ; Configurar USART: 8 bits, sin paridad, 1 bit de stop
+    MOVWF TXSTA          ; Configurar TXSTA
+    BANKSEL RCSTA
+    BSF RCSTA, 7      ; Habilitar el puerto serial
+
+    BANKSEL TMR0        ; Configurar TMR0
+    CLRF TMR0           ; Inicializar TMR0 a 0
 
     CLRF PORTB          ; Inicializar PORTB
     CLRF PORTC          ; Inicializar PORTC
@@ -57,10 +70,11 @@ CONFI
     GOTO MAIN
 
 MAIN
-; REVISAR CON MELI
     CALL DISPLAY
+    CALL VERIFICAR_LDR      ; Verifico el LDR
     CALL VERIFICAR_ESTADO   ; Verifico donde esta el ascensor
     CALL VERIFICAR_BOTONES
+    CALL ENVIAR_ESTADO      ; Enviar el estado actual por UART
     MOVF ESTADO, W
     XORWF PISO, W
     BTFSS STATUS, Z
@@ -120,9 +134,9 @@ VERIFICAR_BOTONES
 	BCF BOTONES_ANT, 0
 	
     BTFSC PORTB, 1
-	GOTO RB1_ALTO
+	    GOTO RB1_ALTO
 	BCF BOTONES_ANT, 1
-PISO_3
+
     BTFSC PORTB, 2
         GOTO RB2_ALTO
 	BCF BOTONES_ANT, 2
@@ -143,7 +157,7 @@ RB0_FLANCO
 RB1_ALTO
     BTFSS BOTONES_ANT, 1
     GOTO RB1_FLANCO
-    GOTO PISO_3
+    GOTO VOLVER_MAIN
 
 RB1_FLANCO
     BSF	BOTONES_ANT, 1 
@@ -191,6 +205,107 @@ SUBIR_MOTOR
 BAJAR_MOTOR
     BCF PORTC, 0
     BSF PORTC, 1
+    RETURN
+
+; =================== RUTINA DE VERIFICACION DEL LDR ============================
+; Verifica el estado del LDR y enciende o apaga un LED en PORTC, bit 2
+VERIFICAR_LDR
+    BANKSEL ADCON0
+    CALL SAMPLE_TIME ; Esperar un tiempo de muestreo
+    CALL SAMPLE_TIME
+    BSF ADCON0, GO ; Iniciar conversión ADC
+    ; Esperar a que la conversión termine
+WAIT_ADC
+    BTFSC ADCON0, GO
+    GOTO WAIT_ADC
+    ; Leer el resultado de la conversión
+    BANKSEL ADRESH
+    MOVF ADRESH, W ; Obtener el valor de la conversión
+    BANKSEL ADRESH
+    MOVF    ADRESH, W
+    MOVWF   VALH               ; Parte alta del resultado
+
+    MOVF    ADRESL, W
+    MOVWF   VALL               ; Parte baja del resultado
+    ; Primero comparar parte alta
+    MOVF    VALH, W
+    SUBLW   0x01         ; W = 1 - VALH
+
+    BTFSS   STATUS, Z    ; Si VALH ≠ 1
+    GOTO    MAYOR_MENOR  ; Salta para comparar si mayor o menor
+
+    ; Si parte alta es igual (1), comparar parte baja
+    MOVF    VALL, W
+    SUBLW   0xF4         ; W = 0xF4 - VALL
+    BTFSS   STATUS, Z
+    GOTO    MAYOR_MENOR
+
+    ; Si llegamos acá, el valor ADC == 500
+    BCF     PORTC, 2     ; Apaga el LED RC0
+    GOTO    FIN_COMP
+
+MAYOR_MENOR
+    ; Si VALH > 1, entonces seguro es > 500
+
+    MOVF    VALH, W
+    SUBLW   0x01
+    BTFSS   STATUS, C    ; Si VALH > 1 → C = 0
+    GOTO    ADC_MENOR    ; Menor que 500
+
+    ; Si es mayor:
+    BCF     PORTC, 2     ; Apaga el LED
+    GOTO    FIN_COMP
+
+ADC_MENOR
+    BSF     PORTC, 2     ; Enciende el LED
+
+FIN_COMP
+    RETURN
+
+SAMPLE_TIME
+    MOVLW 5 ; Carga Temp con 3
+    MOVWF TEMP
+SD
+    DECFSZ TEMP , F ; Bucle de retardo
+    GOTO SD
+    RETURN
+
+;=================== RUTINAS DE ENVIO POR EUSART ======================
+ENVIAR_ESTADO
+    ; Enviar texto "PISO: "
+    MOVLW   'P'
+    CALL    ENVIAR_UART
+    MOVLW   'I'
+    CALL    ENVIAR_UART
+    MOVLW   'S'
+    CALL    ENVIAR_UART
+    MOVLW   'O'
+    CALL    ENVIAR_UART
+    MOVLW   ':'
+    CALL    ENVIAR_UART
+    MOVLW   ' '
+    CALL    ENVIAR_UART
+
+    ; Enviar valor de ESTADO (1 a 3)
+    MOVF    ESTADO, W
+    ADDLW   '0'
+    CALL    ENVIAR_UART
+
+    ; Enviar retorno de carro y salto de línea
+    MOVLW   0x0D
+    CALL    ENVIAR_UART
+    MOVLW   0x0A
+    CALL    ENVIAR_UART
+
+    RETURN
+ENVIAR_UART
+    BANKSEL TXSTA
+WAIT_TX
+    BTFSS   TXSTA, TRMT
+    GOTO    WAIT_TX
+    BANKSEL TXREG
+    MOVWF   TXREG
+    BANKSEL 0
     RETURN
 END
     
