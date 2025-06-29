@@ -8,8 +8,6 @@
 
 ;==================== DECLARACIÓN DE VARIABLES ==================================
     CBLOCK 0x20
-        W_AUX
-        STATUS_AUX
         POSICION
         ESTADO
         PISO
