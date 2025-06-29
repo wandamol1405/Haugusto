@@ -15,6 +15,12 @@
         TEMP
         VALH
         VALL
+        ESTADO
+        PISO
+	    BOTONES_ANT
+        TEMP
+        VALH
+        VALL
     ENDC
 
 ;==================== VECTORES DE INICIO ========================================
@@ -41,8 +47,44 @@ CONFI
     CLRF ANSELH         ; Deshabilitar entradas analógicas AN8?AN13
 
     MOVLW B'10000011'   ; TMR0 source Fosc/4 y prescaler asignado a TMR0 con rate 1:32
+    MOVLW B'00000111'   ; RB0, RB1 y RB2 como entradas
+    MOVWF TRISB
+    MOVLW B'00001111'   ; RA0, RA1, RA2 y RA3 como entradas
+    MOVWF TRISA
+    CLRF TRISC          ; PORTC como salida
+    
+    BANKSEL ANSEL       ; Pines RE0, RE1, y RE2 como salidas digitales
+    CLRF ANSEL          ; Deshabilitar entradas analógicas AN1?AN7
+    BSF ANSEL, 0        ; Habilitar AN0 como entrada analógica
+    CLRF ANSELH         ; Deshabilitar entradas analógicas AN8?AN13
+
+    MOVLW B'10000011'   ; TMR0 source Fosc/4 y prescaler asignado a TMR0 con rate 1:32
     MOVWF OPTION_REG
     
+    BANKSEL ADCON1
+    BSF ADCON1, 7   ; Justificación a la derecha, Vref+ = Vdd, Vref- = Vss
+    BANKSEL ADCON0
+    BSF ADCON0, 0      ; Habilitar el ADC
+
+    BANKSEL SPBRG
+    MOVLW D'25'
+    MOVWF SPBRG          ; Configurar baud rate para USART (9600 bps con Fosc = 4MHz)
+    MOVLW B'00100100'    ; Configurar USART: 8 bits, sin paridad, 1 bit de stop
+    MOVWF TXSTA          ; Configurar TXSTA
+    BANKSEL RCSTA
+    BSF RCSTA, 7      ; Habilitar el puerto serial
+
+    BANKSEL TMR0        ; Configurar TMR0
+    CLRF TMR0           ; Inicializar TMR0 a 0
+
+    CLRF PORTB          ; Inicializar PORTB
+    CLRF PORTC          ; Inicializar PORTC
+
+    CLRF ESTADO         ; Inicializar el estado del ascensor
+    CLRF PISO           ; Inicializar el piso actual
+
+    CALL DETENER_MOTOR  ; Asegurar que el motor esté detenido al inicio
+
     BANKSEL ADCON1
     BSF ADCON1, 7   ; Justificación a la derecha, Vref+ = Vdd, Vref- = Vss
     BANKSEL ADCON0
@@ -96,6 +138,31 @@ CAMBIAR_SENTIDO             ; Defino el sentido del ascensor
 CASO_INICIAL
     ; Si PISO == ESTADO, detener el motor
     CALL DETENER_MOTOR
+    CALL VERIFICAR_LDR      ; Verifico el LDR
+    CALL VERIFICAR_ESTADO   ; Verifico donde esta el ascensor
+    CALL VERIFICAR_BOTONES
+    CALL ENVIAR_ESTADO      ; Enviar el estado actual por UART
+    MOVF ESTADO, W
+    XORWF PISO, W
+    BTFSS STATUS, Z
+    GOTO CAMBIAR_SENTIDO    ; Cambiar sentido del motor si es necesario
+    CALL DETENER_MOTOR
+    GOTO MAIN
+    
+CAMBIAR_SENTIDO             ; Defino el sentido del ascensor
+    MOVF PISO, W
+    BTFSC STATUS, Z 
+    GOTO CASO_INICIAL
+    SUBWF ESTADO, W 
+    BTFSS STATUS, C         ; Si PISO < ESTADO, subir
+    CALL SUBIR_MOTOR
+    BTFSC STATUS, C         ; Si PISO >= ESTADO, bajar
+    CALL BAJAR_MOTOR
+    GOTO MAIN
+
+CASO_INICIAL
+    ; Si PISO == ESTADO, detener el motor
+    CALL DETENER_MOTOR
     GOTO MAIN
 
 DISPLAY
@@ -122,7 +189,9 @@ DISPLAY
 RETARDO
     CLRF TMR0               ; Limpiar TMR0
     BCF INTCON,T0IF         ; Limpia el flag de interrupción TMR0
+    BCF INTCON,T0IF         ; Limpia el flag de interrupción TMR0
 LOOP_RETARDO
+    BTFSS INTCON, T0IF      ; Espera a que TMR0 se desborde
     BTFSS INTCON, T0IF      ; Espera a que TMR0 se desborde
     GOTO LOOP_RETARDO       ; Si no se desbordó, espera
     RETURN
